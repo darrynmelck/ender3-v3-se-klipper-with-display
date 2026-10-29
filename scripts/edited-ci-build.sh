@@ -1,4 +1,3 @@
-
 #!/bin/bash
 # Build the Ender-3 V3 SE display-enabled STM32 firmware.
 
