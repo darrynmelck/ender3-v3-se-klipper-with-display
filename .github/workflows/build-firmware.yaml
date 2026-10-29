@@ -32,3 +32,16 @@ jobs:
           name: ender3-v3-se-klipper-firmware
           path: ci_build/output/*.bin
           if-no-files-found: error
+
+      - name: Verify firmware configuration
+        if: always()
+        run: |
+          echo "===== MCU configuration ====="
+          if [ -f .config ]; then
+            grep -E 'CONFIG_MCU=|CONFIG_MACH_STM32F401|CONFIG_MACH_STM32F103|CONFIG_CLOCK_FREQ=|CONFIG_FLASH_APPLICATION_ADDRESS=|CONFIG_STM32_FLASH_START_|CONFIG_STM32_SERIAL_USART1|CONFIG_ENABLE_SERIAL_BRIDGE_USART2|CONFIG_WANT_DISPLAYS' .config || true
+          else
+            echo "No .config file found."
+          fi
+
+          echo "===== Firmware binary ====="
+          ls -lh ci_build/output/*.bin 2>/dev/null || true
