@@ -4,3 +4,7 @@ out
 .config
 .config.old
 klippy/.version
+
+# Generated CI build files
+ci_build/
+ci_cache/
