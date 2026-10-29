@@ -1,64 +1,76 @@
 #!/bin/bash
-# Test script for continuous integration.
+# Build setup script for continuous integration testing.
 
-# Stop script early on any error; check variables
-set -eu
+set -eux
 
-# Paths to tools installed by ci-install.sh
-MAIN_DIR=${PWD}
-BUILD_DIR=${PWD}/ci_build
-export PATH=${BUILD_DIR}/pru-gcc/bin:${PATH}
-export PATH=${BUILD_DIR}/or1k-linux-musl-cross/bin:${PATH}
-PYTHON=${BUILD_DIR}/python-env/bin/python
+MAIN_DIR="${PWD}"
+BUILD_DIR="${PWD}/ci_build"
+CACHE_DIR="${PWD}/ci_cache"
+
+mkdir -p "${BUILD_DIR}" "${CACHE_DIR}"
 
 ######################################################################
-# Section grouping output message helpers
+# Install system dependencies
 ######################################################################
 
-start_test() {
-    echo "::group::=============== $1 $2"
-    set -x
-}
+echo -e "\n\n=============== Install system dependencies\n\n"
 
-finish_test() {
-    set +x
-    echo "=============== Finished $2"
-    echo "::endgroup::"
-}
+PKGS="virtualenv libffi-dev build-essential"
+PKGS="${PKGS} gcc-avr avr-libc"
+PKGS="${PKGS} libnewlib-arm-none-eabi gcc-arm-none-eabi binutils-arm-none-eabi"
+PKGS="${PKGS} pv libmpfr-dev libgmp-dev libmpc-dev texinfo bison flex"
 
-######################################################################
-# Check for whitespace errors
-######################################################################
-
-#start_test check_whitespace "Check whitespace"
-#./scripts/check_whitespace.sh
-#finish_test check_whitespace "Check whitespace"
+sudo apt-get update
+sudo apt-get -y install ${PKGS}
 
 ######################################################################
-# Run compile tests for several different MCU types
+# Install (or build) PRU GCC
 ######################################################################
 
-OUTPUTDIR=${BUILD_DIR}/output
-mkdir -p ${OUTPUTDIR}
+echo -e "\n\n=============== Install embedded PRU GCC\n\n"
 
-TARGET="test/configs/displayv3se.config"
+PRU_FILE="${CACHE_DIR}/gnupru.tar.gz"
+PRU_DIR="${BUILD_DIR}/pru-gcc"
 
-start_test mcu_compile "$TARGET"
-make clean
-make distclean
-unset CC
-cp ${TARGET} .config
-make olddefconfig
-make V=1
-ls -l out/*.bin
-md5sum out/*.bin
-finish_test mcu_compile "$TARGET"
-cp out/klipper.bin ${OUTPUTDIR}/$(basename ${TARGET} .config).bin
+if [ ! -f "${PRU_FILE}" ]; then
+    cd "${BUILD_DIR}"
+
+    git config --global user.email "you@example.com"
+    git config --global user.name "GitHub Actions"
+
+    git clone https://github.com/dinuxbg/gnupru -b 2024.05 --depth 1
+
+    cd gnupru
+    export PREFIX="${PRU_DIR}"
+
+    ./download-and-prepare.sh 2>&1 | pv -nli 30 > "${BUILD_DIR}/gnupru-build.log"
+    ./build.sh 2>&1 | pv -nli 30 >> "${BUILD_DIR}/gnupru-build.log"
+
+    cd "${BUILD_DIR}"
+    tar cfz "${PRU_FILE}" pru-gcc/
+else
+    cd "${BUILD_DIR}"
+    tar xfz "${PRU_FILE}"
+fi
 
 ######################################################################
-# Verify klippy host software
+# Skip or1k-linux-musl-cross
+#
+# The current edited-ci-build.sh only builds the STM32 target.
+# It does not need the OpenRISC cross-compiler.
 ######################################################################
 
-start_test klippy "Test klippy import (Python3)"
-$PYTHON klippy/klippy.py --import-test
-finish_test klippy "Test klippy import (Python3)"
+echo "Skipping unused or1k-linux-musl-cross toolchain."
+
+######################################################################
+# Create Python 3 virtual environment
+######################################################################
+
+echo -e "\n\n=============== Install Python 3 virtualenv\n\n"
+
+cd "${MAIN_DIR}"
+
+virtualenv -p python3 "${BUILD_DIR}/python-env"
+
+"${BUILD_DIR}/python-env/bin/pip" install \
+    -r "${MAIN_DIR}/scripts/klippy-requirements.txt"
